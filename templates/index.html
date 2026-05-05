@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local YouTube Metadata Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>YouTube Metadata Search</h1>
+          {% if channel %}
+            <p class="subtle">{{ channel["title"] }} · {{ video_count }} videos indexed</p>
+          {% else %}
+            <p class="subtle">Index one channel, then search its public metadata.</p>
+          {% endif %}
+        </div>
+        {% if channel %}
+          <form action="/refresh" method="post">
+            <button class="secondary" type="submit">Refresh Metadata</button>
+          </form>
+        {% endif %}
+      </header>
+
+      {% if message %}
+        <div class="notice success">{{ message }}</div>
+      {% endif %}
+      {% if error %}
+        <div class="notice error">{{ error }}</div>
+      {% endif %}
+      {% if not has_api_key %}
+        <div class="notice warning">Add <code>YOUTUBE_API_KEY</code> to your <code>.env</code> file before importing a channel.</div>
+      {% endif %}
+
+      <section class="panel">
+        <h2>Channel</h2>
+        <form class="inline-form" action="/import" method="post">
+          <input name="channel_url" type="text" placeholder="https://www.youtube.com/@channelname" required>
+          <button type="submit">Import Channel</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Search</h2>
+        <form class="search-form" action="/" method="get">
+          <input name="q" type="search" value="{{ query }}" placeholder="Search a species name, common name, or keyword">
+          <div class="split-actions">
+            <button type="submit">Search</button>
+            <button type="submit" formaction="/playlist">Create Playlist</button>
+          </div>
+        </form>
+      </section>
+
+      {% if query %}
+        <section class="results-header">
+          <h2>{{ results|length }} result{% if results|length != 1 %}s{% endif %} for “{{ query }}”</h2>
+        </section>
+      {% endif %}
+
+      <section class="results">
+        {% for result in results %}
+          <article class="result-card">
+            {% if result.thumbnail_url %}
+              <a class="thumb-link" href="{{ result.youtube_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open {{ result.title }} on YouTube">
+                <img src="{{ result.thumbnail_url }}" alt="">
+              </a>
+            {% endif %}
+            <div class="result-body">
+              <a class="title-link" href="{{ result.youtube_url }}" target="_blank" rel="noopener noreferrer">{{ result.title }}</a>
+              <p class="meta">{{ result.published_date }}</p>
+              {% if result.match_snippet %}
+                <p class="snippet">{{ result.match_snippet|safe }}</p>
+              {% endif %}
+              {% if result.tags %}
+                <div class="tags">
+                  {% for tag in result.tags[:10] %}
+                    <span>{{ tag }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              <a class="open-button" href="{{ result.youtube_url }}" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    </main>
+  </body>
+</html>

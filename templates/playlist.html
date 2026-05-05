@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Playlist for {{ query }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Playlist</h1>
+          {% if channel %}
+            <p class="subtle">{{ channel["title"] }} · {{ video_count }} videos indexed</p>
+          {% else %}
+            <p class="subtle">Import a channel first, then create playlists from search results.</p>
+          {% endif %}
+        </div>
+        <a class="secondary-link" href="/?q={{ query|urlencode }}">Back to Search</a>
+      </header>
+
+      <section class="panel playlist-hero">
+        <div>
+          <h2>{{ results|length }} video{% if results|length != 1 %}s{% endif %} for “{{ query }}”</h2>
+          <p class="subtle">This opens a temporary YouTube queue from your local search results.</p>
+        </div>
+        {% if playlist_url %}
+          <a class="open-button" href="{{ playlist_url }}">Open Playlist on YouTube</a>
+        {% endif %}
+      </section>
+
+      {% if not results %}
+        <div class="notice warning">No matching videos found for this playlist.</div>
+      {% endif %}
+
+      <section class="results playlist-results">
+        {% for result in results %}
+          <article class="result-card">
+            {% if result.thumbnail_url %}
+              <a class="thumb-link" href="{{ result.youtube_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open {{ result.title }} on YouTube">
+                <img src="{{ result.thumbnail_url }}" alt="">
+              </a>
+            {% endif %}
+            <div class="result-body">
+              <p class="playlist-position">#{{ loop.index }}</p>
+              <a class="title-link" href="{{ result.youtube_url }}" target="_blank" rel="noopener noreferrer">{{ result.title }}</a>
+              <p class="meta">{{ result.published_date }}</p>
+              {% if result.match_snippet %}
+                <p class="snippet">{{ result.match_snippet|safe }}</p>
+              {% endif %}
+              <a class="open-button compact" href="{{ result.youtube_url }}" target="_blank" rel="noopener noreferrer">Open Video</a>
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    </main>
+  </body>
+</html>
