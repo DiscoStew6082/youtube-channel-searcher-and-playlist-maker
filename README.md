@@ -1,6 +1,20 @@
 # YouTube Channel Searcher and Playlist Maker
 
-A local-only web app that indexes one YouTube channel's public video metadata with the official YouTube Data API, then lets you search that channel by species name, common name, scientific name, or any other keyword.
+[![CI](https://github.com/DiscoStew6082/youtube-channel-searcher-and-playlist-maker/actions/workflows/ci.yml/badge.svg)](https://github.com/DiscoStew6082/youtube-channel-searcher-and-playlist-maker/actions/workflows/ci.yml)
+
+A local-first web app that indexes one YouTube channel's public metadata with the official YouTube Data API, then lets you search that channel by species name, common name, scientific name, or any other keyword.
+
+## 30-second proof
+
+- **Problem:** YouTube channel search is weak when you remember a topic, species, or phrase but not the exact video title.
+- **System:** FastAPI app imports a channel's public video metadata, stores it locally in SQLite, and searches titles, descriptions, and tags without scraping or downloading video.
+- **Workflow:** search locally, inspect matching videos, then generate a temporary YouTube queue from the result set.
+- **Privacy boundary:** no YouTube account access, no captions/transcripts, no video downloads, localhost-first, API key kept in local `.env`.
+- **Stack:** Python, FastAPI, Jinja, SQLite, httpx, pytest, GitHub Actions.
+
+**Recruiter signal:** this is a small but complete local-first product surface: external API integration, privacy-conscious storage, tested parsing/search logic, and a usable browser workflow.
+
+![Local YouTube channel search app demo](docs/assets/youtube-channel-search-demo.svg)
 
 It is built for the annoying moment when you know a channel talked about dolphins, hyenas, milkweed, or some obscure species, but YouTube's own channel search is not helping.
 

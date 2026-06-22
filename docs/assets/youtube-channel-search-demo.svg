@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="500" viewBox="0 0 980 500" role="img" aria-labelledby="title desc">
+  <title id="title">YouTube channel search local app demo</title>
+  <desc id="desc">Mocked browser screenshot of a local YouTube channel metadata search app showing a monarch search and playlist creation.</desc>
+  <rect width="980" height="500" rx="22" fill="#0f172a"/>
+  <rect x="28" y="28" width="924" height="444" rx="16" fill="#111827" stroke="#334155"/>
+  <rect x="28" y="28" width="924" height="58" rx="16" fill="#1e293b"/>
+  <text x="56" y="65" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="22" font-weight="700" fill="#f8fafc">Local YouTube Channel Searcher</text>
+  <text x="735" y="64" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" fill="#94a3b8">localhost-only • official API</text>
+
+  <rect x="56" y="116" width="560" height="48" rx="10" fill="#020617" stroke="#475569"/>
+  <text x="78" y="146" font-family="SFMono-Regular, Consolas, monospace" font-size="17" fill="#cbd5e1">https://www.youtube.com/@naturechannel</text>
+  <rect x="636" y="116" width="122" height="48" rx="10" fill="#2563eb"/>
+  <text x="668" y="146" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Import</text>
+
+  <rect x="56" y="190" width="702" height="48" rx="10" fill="#020617" stroke="#475569"/>
+  <text x="78" y="220" font-family="SFMono-Regular, Consolas, monospace" font-size="17" fill="#facc15">monarch butterfly</text>
+  <rect x="778" y="190" width="132" height="48" rx="10" fill="#16a34a"/>
+  <text x="805" y="220" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Playlist</text>
+
+  <g font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <rect x="56" y="270" width="854" height="72" rx="12" fill="#1f2937" stroke="#334155"/>
+    <text x="82" y="302" font-size="18" font-weight="700" fill="#f8fafc">Monarch butterfly migration explained</text>
+    <text x="82" y="326" font-size="14" fill="#94a3b8">Danaus plexippus • milkweed • migration • public metadata cached locally</text>
+
+    <rect x="56" y="358" width="854" height="72" rx="12" fill="#1f2937" stroke="#334155"/>
+    <text x="82" y="390" font-size="18" font-weight="700" fill="#f8fafc">How monarchs find their way south</text>
+    <text x="82" y="414" font-size="14" fill="#94a3b8">Searches titles, descriptions, and tags without scraping or downloading video</text>
+  </g>
+</svg>
