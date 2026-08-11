@@ -3,7 +3,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
 
@@ -30,3 +29,8 @@ def get_idle_shutdown_seconds() -> int:
         return max(0, int(configured))
     except ValueError:
         return 0
+
+
+def get_allow_remote_thumbnails() -> bool:
+    configured = os.getenv("ALLOW_REMOTE_THUMBNAILS", "").strip().lower()
+    return configured in {"1", "true", "yes", "on"}
