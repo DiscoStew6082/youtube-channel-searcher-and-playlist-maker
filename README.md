@@ -84,6 +84,10 @@ http://127.0.0.1:8000
 3. Search for a species name or keyword.
 4. Click a video result, or click **Create Playlist** to build a temporary queue from the search results.
 
+Imports and refreshes fetch and prepare the full metadata snapshot before saving it. The active channel, its videos, and its search index change together; a failed import keeps the previous index. Refreshing replaces that channel's snapshot, including removing videos no longer returned by the public API. Searches, counts, and queues use only the active channel.
+
+Existing databases keep their cached channels. On the first run after this update, the most recently refreshed channel becomes active (ties use insertion order), then the active choice is stored explicitly. Older databases did not record import completion, so if a previous interrupted import left the wrong channel displayed, import the channel you want again.
+
 ## Security Notes
 
 Run the app on localhost:

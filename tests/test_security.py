@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.main import app
+from app.snapshot import ChannelMetadata, ChannelSnapshot
 
 
 def _client(tmp_path, monkeypatch):
@@ -143,10 +144,8 @@ def _add_searchable_video(database_path):
             "snippet": {"title": "Test Channel"},
             "contentDetails": {"relatedPlaylists": {"uploads": "UUtest"}},
         }
-        channel_id, _ = db.upsert_channel(conn, channel, "@test")
-        db.upsert_videos(
-            conn,
-            channel_id,
+        snapshot = ChannelSnapshot.from_api(
+            ChannelMetadata.from_api(channel, "@test"),
             [
                 {
                     "id": "video1",
@@ -163,3 +162,4 @@ def _add_searchable_video(database_path):
                 }
             ],
         )
+        db.replace_channel_snapshot(conn, snapshot)

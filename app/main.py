@@ -5,7 +5,7 @@ import secrets
 import signal
 import threading
 import time
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, closing, suppress
 from urllib.parse import urlencode, urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app import db
+from app import db, importer
 from app.config import (
     BASE_DIR,
     get_allow_remote_thumbnails,
@@ -105,11 +105,7 @@ async def _shutdown_after_idle(idle_seconds: int) -> None:
 def index(
     request: Request, q: str = "", message: str = "", error: str = ""
 ) -> HTMLResponse:
-    with db.connect(get_database_path()) as conn:
-        db.init_db(conn)
-        channel = db.get_channel(conn)
-        video_count = db.count_videos(conn)
-        results = db.search_videos(conn, q) if q.strip() else []
+    channel, video_count, results = _read_index(q)
 
     return templates.TemplateResponse(
         request=request,
@@ -130,11 +126,7 @@ def index(
 
 @app.get("/playlist", response_class=HTMLResponse)
 def playlist(request: Request, q: str = "") -> HTMLResponse:
-    with db.connect(get_database_path()) as conn:
-        db.init_db(conn)
-        channel = db.get_channel(conn)
-        video_count = db.count_videos(conn)
-        results = db.search_videos(conn, q) if q.strip() else []
+    channel, video_count, results = _read_index(q)
 
     playlist_url = _youtube_watch_playlist_url(
         [result["video_id"] for result in results]
@@ -168,14 +160,7 @@ def import_channel(
             )
 
         client = YouTubeClient(api_key)
-        channel = client.resolve_channel(channel_url)
-        with db.connect(get_database_path()) as conn:
-            db.init_db(conn)
-            channel_id, uploads_playlist_id = db.upsert_channel(
-                conn, channel, channel_url
-            )
-            videos = client.fetch_channel_videos(uploads_playlist_id)
-            imported_count = db.upsert_videos(conn, channel_id, videos)
+        imported_count = importer.import_channel(client, get_database_path(), channel_url)
     except (ValueError, YouTubeAPIError) as exc:
         return _redirect(error=str(exc))
     finally:
@@ -198,24 +183,29 @@ def refresh_channel(
             )
 
         client = YouTubeClient(api_key)
-        with db.connect(get_database_path()) as conn:
-            db.init_db(conn)
-            channel = db.get_channel(conn)
-            if channel is None:
-                return _redirect(error="Import a channel before refreshing.")
-            videos = client.fetch_channel_videos(channel["uploads_playlist_id"])
-            imported_count = db.upsert_videos(conn, channel["id"], videos)
-            conn.execute(
-                "UPDATE channels SET last_refreshed_at = ? WHERE id = ?",
-                (db.current_timestamp(), channel["id"]),
-            )
-            conn.commit()
-    except YouTubeAPIError as exc:
+        imported_count = importer.refresh_channel(client, get_database_path())
+    except (ValueError, YouTubeAPIError) as exc:
         return _redirect(error=str(exc))
     finally:
         _release_mutation_slot()
 
     return _redirect(message=f"Refreshed {imported_count} videos.")
+
+
+def _read_index(query: str):
+    with closing(db.connect(get_database_path())) as conn:
+        db.init_db(conn)
+        # SELECT alone does not open a transaction with sqlite3's default mode.
+        # Pin the header, count, and search/queue results to one committed snapshot.
+        with conn:
+            conn.execute("BEGIN")
+            channel = db.get_channel(conn)
+            channel_id = channel["id"] if channel else None
+            return (
+                channel,
+                db.count_videos(conn, channel_id),
+                db.search_videos(conn, channel_id, query),
+            )
 
 
 def _youtube_watch_playlist_url(video_ids: list[str]) -> str:

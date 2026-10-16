@@ -1,9 +1,8 @@
-import sqlite3
-
 from app import db
+from app.snapshot import ChannelMetadata, ChannelSnapshot
 
 
-def test_upsert_and_search_videos(tmp_path):
+def test_snapshot_and_search_videos(tmp_path):
     database_path = tmp_path / "test.db"
     conn = db.connect(database_path)
     db.init_db(conn)
@@ -13,10 +12,8 @@ def test_upsert_and_search_videos(tmp_path):
         "snippet": {"title": "Test Channel"},
         "contentDetails": {"relatedPlaylists": {"uploads": "UUtest"}},
     }
-    channel_id, _ = db.upsert_channel(conn, channel, "https://www.youtube.com/@test")
-    db.upsert_videos(
-        conn,
-        channel_id,
+    snapshot = ChannelSnapshot.from_api(
+        ChannelMetadata.from_api(channel, "https://www.youtube.com/@test"),
         [
             {
                 "id": "video1",
@@ -31,7 +28,8 @@ def test_upsert_and_search_videos(tmp_path):
         ],
     )
 
-    results = db.search_videos(conn, "Danaus")
+    db.replace_channel_snapshot(conn, snapshot)
+    results = db.search_videos(conn, "UCtest", "Danaus")
 
     assert len(results) == 1
     assert results[0]["video_id"] == "video1"
@@ -39,7 +37,7 @@ def test_upsert_and_search_videos(tmp_path):
     assert results[0]["tags"] == ["insects", "milkweed"]
 
 
-def test_upsert_videos_does_not_duplicate(tmp_path):
+def test_snapshot_reimport_does_not_duplicate(tmp_path):
     conn = db.connect(tmp_path / "test.db")
     db.init_db(conn)
     channel = {
@@ -47,7 +45,7 @@ def test_upsert_videos_does_not_duplicate(tmp_path):
         "snippet": {"title": "Test Channel"},
         "contentDetails": {"relatedPlaylists": {"uploads": "UUtest"}},
     }
-    channel_id, _ = db.upsert_channel(conn, channel, "https://www.youtube.com/@test")
+    metadata = ChannelMetadata.from_api(channel, "https://www.youtube.com/@test")
     video = {
         "id": "video1",
         "snippet": {
@@ -59,9 +57,9 @@ def test_upsert_videos_does_not_duplicate(tmp_path):
         },
     }
 
-    db.upsert_videos(conn, channel_id, [video])
+    db.replace_channel_snapshot(conn, ChannelSnapshot.from_api(metadata, [video]))
     video["snippet"]["title"] = "Updated monarch title"
-    db.upsert_videos(conn, channel_id, [video])
+    db.replace_channel_snapshot(conn, ChannelSnapshot.from_api(metadata, [video]))
 
-    assert db.count_videos(conn) == 1
-    assert db.search_videos(conn, "monarch")[0]["title"] == "Updated monarch title"
+    assert db.count_videos(conn, "UCtest") == 1
+    assert db.search_videos(conn, "UCtest", "monarch")[0]["title"] == "Updated monarch title"

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.snapshot import ChannelMetadata, ChannelSnapshot
+
 
 def connect(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,6 +42,20 @@ def init_db(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(channel_id) REFERENCES channels(id)
         );
 
+        CREATE INDEX IF NOT EXISTS videos_channel_id ON videos(channel_id);
+
+        CREATE TABLE IF NOT EXISTS active_channel (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+            channel_id TEXT REFERENCES channels(id)
+        );
+
+        -- Migrate the previous display choice once. Ties use insertion order.
+        INSERT OR IGNORE INTO active_channel (singleton, channel_id)
+        VALUES (1, (
+            SELECT id FROM channels
+            ORDER BY last_refreshed_at DESC, rowid DESC LIMIT 1
+        ));
+
         CREATE VIRTUAL TABLE IF NOT EXISTS videos_fts USING fts5(
             video_id UNINDEXED,
             title,
@@ -55,18 +71,22 @@ def current_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def upsert_channel(
-    conn: sqlite3.Connection,
-    channel: dict[str, Any],
-    input_url: str,
-) -> tuple[str, str]:
-    snippet = channel.get("snippet", {})
-    related = channel.get("contentDetails", {}).get("relatedPlaylists", {})
-    channel_id = channel["id"]
-    uploads_playlist_id = related.get("uploads", "")
-    if not uploads_playlist_id:
-        raise ValueError("YouTube did not return an uploads playlist for this channel.")
+def replace_channel_snapshot(conn: sqlite3.Connection, snapshot: ChannelSnapshot) -> int:
+    """Atomically publish metadata, the complete video/FTS set, and active scope."""
+    now = current_timestamp()
+    with conn:
+        _upsert_channel(conn, snapshot.channel, now)
+        _replace_videos(conn, snapshot, now)
+        conn.execute(
+            "UPDATE active_channel SET channel_id = ? WHERE singleton = 1",
+            (snapshot.channel.id,),
+        )
+    return len(snapshot.videos)
 
+
+def _upsert_channel(
+    conn: sqlite3.Connection, channel: ChannelMetadata, refreshed_at: str
+) -> None:
     conn.execute(
         """
         INSERT INTO channels (id, title, input_url, uploads_playlist_id, last_refreshed_at)
@@ -77,34 +97,18 @@ def upsert_channel(
             uploads_playlist_id = excluded.uploads_playlist_id,
             last_refreshed_at = excluded.last_refreshed_at
         """,
-        (
-            channel_id,
-            snippet.get("title", "Untitled channel"),
-            input_url,
-            uploads_playlist_id,
-            current_timestamp(),
-        ),
+        (channel.id, channel.title, channel.input_url, channel.uploads_playlist_id, refreshed_at),
     )
-    conn.commit()
-    return channel_id, uploads_playlist_id
 
 
-def upsert_videos(
-    conn: sqlite3.Connection,
-    channel_id: str,
-    videos: list[dict[str, Any]],
-) -> int:
-    now = current_timestamp()
-    for video in videos:
-        snippet = video.get("snippet", {})
-        video_id = video["id"]
-        title = snippet.get("title", "Untitled video")
-        description = snippet.get("description", "")
-        tags = snippet.get("tags", [])
-        thumbnail_url = _best_thumbnail(snippet.get("thumbnails", {}))
-        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-        tags_json = json.dumps(tags)
-
+def _replace_videos(conn: sqlite3.Connection, snapshot: ChannelSnapshot, fetched_at: str) -> None:
+    channel_id = snapshot.channel.id
+    conn.execute(
+        "DELETE FROM videos_fts WHERE video_id IN (SELECT video_id FROM videos WHERE channel_id = ?)",
+        (channel_id,),
+    )
+    conn.execute("DELETE FROM videos WHERE channel_id = ?", (channel_id,))
+    for video in snapshot.videos:
         conn.execute(
             """
             INSERT INTO videos (
@@ -112,55 +116,44 @@ def upsert_videos(
                 published_at, thumbnail_url, youtube_url, raw_json, fetched_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(video_id) DO UPDATE SET
-                channel_id = excluded.channel_id,
-                title = excluded.title,
-                description = excluded.description,
-                tags_json = excluded.tags_json,
-                published_at = excluded.published_at,
-                thumbnail_url = excluded.thumbnail_url,
-                youtube_url = excluded.youtube_url,
-                raw_json = excluded.raw_json,
-                fetched_at = excluded.fetched_at
             """,
             (
-                video_id,
-                channel_id,
-                title,
-                description,
-                tags_json,
-                snippet.get("publishedAt", ""),
-                thumbnail_url,
-                youtube_url,
-                json.dumps(video),
-                now,
+                video.video_id, channel_id, video.title, video.description,
+                video.tags_json, video.published_at, video.thumbnail_url,
+                video.youtube_url, video.raw_json, fetched_at,
             ),
         )
-        conn.execute("DELETE FROM videos_fts WHERE video_id = ?", (video_id,))
         conn.execute(
             """
             INSERT INTO videos_fts (video_id, title, description, tags)
             VALUES (?, ?, ?, ?)
             """,
-            (video_id, title, description, " ".join(tags)),
+            (video.video_id, video.title, video.description, video.tags_text),
         )
-    conn.commit()
-    return len(videos)
 
 
 def get_channel(conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute(
-        "SELECT * FROM channels ORDER BY last_refreshed_at DESC LIMIT 1"
+        """
+        SELECT c.* FROM channels c
+        JOIN active_channel a ON a.channel_id = c.id
+        WHERE a.singleton = 1
+        """
     ).fetchone()
 
 
-def count_videos(conn: sqlite3.Connection) -> int:
-    return conn.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
+def count_videos(conn: sqlite3.Connection, channel_id: str | None) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM videos WHERE channel_id = ?", (channel_id,)
+    ).fetchone()[0]
 
 
-def search_videos(conn: sqlite3.Connection, query: str, limit: int = 50) -> list[dict[str, Any]]:
+def search_videos(
+    conn: sqlite3.Connection, channel_id: str | None, query: str, limit: int = 50
+) -> list[dict[str, Any]]:
     normalized = query.strip()
-    if not normalized:
+    expression = _fts_query(normalized)
+    if channel_id is None or not expression:
         return []
 
     rows = conn.execute(
@@ -177,11 +170,11 @@ def search_videos(conn: sqlite3.Connection, query: str, limit: int = 50) -> list
             bm25(videos_fts) AS rank
         FROM videos_fts
         JOIN videos v ON v.video_id = videos_fts.video_id
-        WHERE videos_fts MATCH ?
+        WHERE videos_fts MATCH ? AND v.channel_id = ?
         ORDER BY rank, v.published_at DESC
         LIMIT ?
         """,
-        (_fts_query(normalized), limit),
+        (expression, channel_id, limit),
     ).fetchall()
 
     results: list[dict[str, Any]] = []
@@ -222,11 +215,3 @@ def _safe_highlight_snippet(snippet: str) -> str:
         escaped.replace("&lt;mark&gt;", "<mark>")
         .replace("&lt;/mark&gt;", "</mark>")
     )
-
-
-def _best_thumbnail(thumbnails: dict[str, Any]) -> str:
-    for key in ("maxres", "standard", "high", "medium", "default"):
-        url = thumbnails.get(key, {}).get("url")
-        if url:
-            return url
-    return ""
