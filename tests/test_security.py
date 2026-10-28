@@ -82,6 +82,22 @@ def test_accepts_same_origin_refresh_with_page_token(tmp_path, monkeypatch):
     assert response.headers["location"].startswith("/?error=")
 
 
+def test_omitted_query_parameters_render_empty_pages(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as client:
+        for path in ("/", "/playlist"):
+            response = client.get(path)
+            assert response.status_code == 200
+
+
+def test_required_form_fields_remain_validated(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as client:
+        assert client.post("/refresh", data={}).status_code == 422
+        assert client.post("/import", data={"csrf_token": app.state.csrf_token}).status_code == 422
+        assert client.post(
+            "/import", data={"channel_url": "x", "csrf_token": "short"}
+        ).status_code == 422
+
+
 def test_rate_limits_back_to_back_mutations(tmp_path, monkeypatch):
     with _client(tmp_path, monkeypatch) as client:
         form = {"csrf_token": app.state.csrf_token}
